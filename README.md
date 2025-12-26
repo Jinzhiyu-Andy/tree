@@ -4,6 +4,9 @@
 
 在线演示： https://jinzhiyu-andy.github.io/tree/ 
 
+[![pages-build-deployment](https://github.com/Jinzhiyu-Andy/tree/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/Jinzhiyu-Andy/tree/actions/workflows/deploy-pages.yml)
+
+> 注意：为使 GitHub Actions 能成功自动推送到 `gh-pages`，请在仓库 **Settings → Actions → General** 中确保允许 GitHub Actions 推送分支（默认通常允许）。如果你的组织策略限制了 Actions 的写权限，需在 **Settings → Pages** 中允许 Actions 部署或为 workflow 配置带有 repo 权限的 PAT（添加到 Secrets，例如 `GH_PAGES_PAT`）。
 运行（本地）：
 
 - 直接打开 `index.html`（在支持 ES module 的浏览器中）
