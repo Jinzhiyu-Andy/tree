@@ -2,7 +2,9 @@
 
 一个基于 Three.js 的交互式粒子圣诞树示例，支持浏览器内实时渲染与相机控制。
 
-运行：
+在线演示： https://jinzhiyu-andy.github.io/tree/ 
+
+运行（本地）：
 
 - 直接打开 `index.html`（在支持 ES module 的浏览器中）
 - 或用简单静态服务器： `npx serve .` 或 `python -m http.server 8000`
