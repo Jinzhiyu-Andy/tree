@@ -329,3 +329,98 @@ const regenSnowBtn = gui.add(params, 'regenSnow').name('重新生成飘雪');
 
 // 简单说明日志
 console.log('粒子圣诞树已加载 — 使用 Three.js 渲染');
+
+// ----------------
+// 截屏 / 录制 / 音乐
+// ----------------
+const screenshotBtn = document.getElementById('screenshot');
+const recordBtn = document.getElementById('record');
+const stopRecordBtn = document.getElementById('stopRecord');
+const musicToggleBtn = document.getElementById('musicToggle');
+
+screenshotBtn.addEventListener('click', () => {
+  renderer.domElement.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'particle-tree.png';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+});
+
+// 录制（使用 MediaRecorder 录制 canvas stream -> webm）
+let mediaRecorder = null;
+let recordedChunks = [];
+recordBtn.addEventListener('click', async () => {
+  if (!mediaRecorder) {
+    const stream = renderer.domElement.captureStream(30);
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+    recordedChunks = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'particle-tree.webm';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+  }
+  mediaRecorder.start();
+  recordBtn.style.display = 'none';
+  stopRecordBtn.style.display = '';
+});
+stopRecordBtn.addEventListener('click', () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+  mediaRecorder = null;
+  recordBtn.style.display = '';
+  stopRecordBtn.style.display = 'none';
+});
+
+// 背景音乐：用 WebAudio 生成简单循环节日旋律
+let audioCtx = null;
+let masterGain = null;
+let musicOn = false;
+let toneTimer = null;
+const melody = [440, 523.25, 659.25, 523.25]; // A4, C5, E5, C5
+function startMusic() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.08;
+    masterGain.connect(audioCtx.destination);
+  }
+  let i = 0;
+  musicOn = true;
+  toneTimer = setInterval(() => {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = melody[i % melody.length];
+    const g = audioCtx.createGain();
+    g.gain.value = 0.0;
+    osc.connect(g);
+    g.connect(masterGain);
+    osc.start();
+    g.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+    osc.stop(audioCtx.currentTime + 0.65);
+    i++;
+  }, 400);
+  musicToggleBtn.textContent = '音乐: 关';
+}
+function stopMusic() {
+  musicOn = false;
+  if (toneTimer) clearInterval(toneTimer);
+  toneTimer = null;
+  if (audioCtx) {
+    // fade out
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+  }
+  musicToggleBtn.textContent = '音乐: 开';
+}
+
+musicToggleBtn.addEventListener('click', () => {
+  if (!musicOn) startMusic(); else stopMusic();
+});
