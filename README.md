@@ -15,7 +15,17 @@
 交互与 GUI：
 - 使用鼠标拖拽旋转相机，滚轮缩放。
 - 右上角有控制面板（lil-gui）可调整：粒子尺寸、闪烁强度、彩灯开关/数量、雪粒数量与是否重新生成等。
+- 左上角按钮：`截屏 (PNG)`、`开始录制`（录制为 WebM）和 `音乐` 开关。
 
+导出与录制：
+- 点击“截屏 (PNG)”可下载当前画面为 PNG。
+- 点击“开始录制”后，点击“停止录制”会下载一个 `particle-tree.webm` 视频文件（浏览器支持 MediaRecorder）。
+- 音乐使用 WebAudio API 生成的循环旋律，可切换开关。
+
+发布与 CI：
+- 在线演示： https://jinzhiyu-andy.github.io/tree/ 
+- CI: 简单 ESLint 校验（`CI` workflow），运行 node install + lint。
+- 自动部署：使用 GitHub Pages 与 Actions（workflow 使用 `peaceiris/actions-gh-pages@v3` 将静态文件推送到 `gh-pages` 分支）。若需 Actions 自动将更改部署到 `gh-pages`，请在仓库 Settings → Actions 中允许 Actions 的**Read and write permissions**；若组织策略限制 Actions 写权限，请创建一个具有 repo 权限的 PAT（个人访问令牌），并在仓库 Settings → Secrets 中添加为 `GH_PAGES_PAT`，workflow 可改为使用该 secret 推送。
 文件结构简要：
 - `index.html`：入口页面
 - `src/styles.css`：简单样式
