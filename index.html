@@ -9,7 +9,13 @@
   <body>
     <div id="ui">
       <h1>粒子圣诞树 🎄</h1>
-      <p>按住鼠标拖拽旋转，滚轮缩放。右下角可调参数（开发中）。</p>
+      <p>按住鼠标拖拽旋转，滚轮缩放。右上角可调参数。</p>
+      <div id="controls">
+        <button id="screenshot">截屏 (PNG)</button>
+        <button id="record">开始录制</button>
+        <button id="stopRecord" style="display:none">停止录制</button>
+        <button id="musicToggle">音乐: 开</button>
+      </div>
     </div>
     <script type="module" src="./src/main.js"></script>
   </body>

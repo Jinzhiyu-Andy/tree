@@ -131,28 +131,77 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.25;
 scene.add(ground);
 
-// 彩灯：在树表面随机生成小灯并闪烁
-const lightGroup = new THREE.Group();
+// 彩灯（GPU 实例化）：使用 InstancedMesh、在顶点/片元着色器里闪烁与缩放
+let lightsMesh = null;
 function generateLights(count = 80) {
-  // 清理
-  while (lightGroup.children.length) lightGroup.remove(lightGroup.children[0]);
+  if (lightsMesh) {
+    scene.remove(lightsMesh);
+    try { lightsMesh.geometry.dispose(); lightsMesh.material.dispose(); } catch(e) {}
+  }
   const posAttr = tree.geometry.getAttribute('position');
   const n = posAttr.count;
   const palette = [0xff3d6b, 0xffd24d, 0x4cffb6, 0x7ec8ff, 0xe8a1ff];
+
+  const sphereGeo = new THREE.SphereGeometry(0.035, 8, 6);
+  const instGeo = sphereGeo.clone();
+
+  const phases = new Float32Array(count);
+  const colors = new Float32Array(count * 3);
+
+  const dummyMatrix = new THREE.Matrix4();
   for (let i = 0; i < count; i++) {
     const idx = Math.floor(Math.random() * n);
     const x = posAttr.getX(idx);
     const y = posAttr.getY(idx);
     const z = posAttr.getZ(idx);
 
+    phases[i] = Math.random() * Math.PI * 2;
     const col = new THREE.Color(palette[i % palette.length]);
-    const mat = new THREE.MeshBasicMaterial({ color: col });
-    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), mat);
-    sphere.position.set(x, y, z);
-    sphere.userData = { baseColor: col, phase: Math.random() * Math.PI * 2 };
-    lightGroup.add(sphere);
+    colors[i*3 + 0] = col.r;
+    colors[i*3 + 1] = col.g;
+    colors[i*3 + 2] = col.b;
+
+    dummyMatrix.makeTranslation(x, y, z);
+    instGeo.setAttribute('instanceMatrix', instGeo.getAttribute('instanceMatrix') || new THREE.InstancedBufferAttribute(new Float32Array(count * 16), 16));
+    const im = instGeo.getAttribute('instanceMatrix');
+    for (let j = 0; j < 16; j++) im.setX(i*16 + j, dummyMatrix.elements[j]);
   }
-  scene.add(lightGroup);
+
+  instGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
+  instGeo.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uTwinkle: { value: tree.material.uniforms.uTwinkle.value } },
+    vertexShader: `
+      attribute float aPhase;
+      attribute vec3 aColor;
+      attribute mat4 instanceMatrix;
+      uniform float uTime;
+      varying vec3 vColor;
+      void main(){
+        vColor = aColor;
+        float f = 0.7 + 0.6 * sin(uTime * 6.0 + aPhase);
+        float s = 0.6 + 0.4 * sin(uTime * 6.0 + aPhase);
+        vec3 localPos = position * s;
+        vec4 worldPos = instanceMatrix * vec4(localPos, 1.0);
+        vec4 mvPos = modelViewMatrix * worldPos;
+        gl_Position = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      void main(){
+        gl_FragColor = vec4(vColor, 1.0);
+      }
+    `,
+    transparent: true,
+    depthWrite: false
+  });
+
+  // 使用一个空 mesh 承载 geometry+材质
+  lightsMesh = new THREE.Mesh(instGeo, material);
+  lightsMesh.frustumCulled = false;
+  scene.add(lightsMesh);
 }
 
 generateLights(80);
@@ -194,16 +243,10 @@ function animate() {
 
   // 轻微整体摆动
   tree.rotation.y = Math.sin(t * 0.25) * 0.03;
-  lightGroup.rotation.y = Math.sin(t * 0.25 + 0.5) * 0.03;
+  if (lightsMesh) lightsMesh.rotation.y = Math.sin(t * 0.25 + 0.5) * 0.03;
   star.scale.setScalar(1.0 + 0.08 * Math.sin(t * 4.0));
 
-  // 更新彩灯闪烁
-  lightGroup.children.forEach((m) => {
-    const f = 0.7 + 0.6 * Math.sin(t * 6 + m.userData.phase);
-    m.material.color.copy(m.userData.baseColor).multiplyScalar(f);
-    const s = 0.6 + 0.4 * Math.sin(t * 6 + m.userData.phase);
-    m.scale.setScalar(s);
-  });
+  // lightsMesh 使用着色器做闪烁与缩放，无需逐个 JS 更新
 
   // 更新飘雪
   if (snowPoints) {
@@ -244,6 +287,16 @@ const params = {
   snowCount: 400,
   regenSnow: () => generateSnow(params.snowCount)
 };
+
+// 为 instanced lights 的着色器同步 uTwinkle
+function syncLightsTwinkle() {
+  if (lightsMesh && lightsMesh.material && lightsMesh.material.uniforms) {
+    lightsMesh.material.uniforms.uTwinkle.value = tree.material.uniforms.uTwinkle.value;
+  }
+}
+
+twCtrl.onChange(() => syncLightsTwinkle());
+
 const sizeCtrl = gui.add(params, 'size', 0.2, 4.0, 0.05).name('粒子尺寸').onChange(v => {
   tree.material.uniforms.uSize.value = v;
 });
@@ -264,7 +317,7 @@ params.regenTree = () => {
 const particleCtrl = gui.add(params, 'particleCount', 1000, 50000, 500).name('粒子数量');
 const regenTreeBtn = gui.add(params, 'regenTree').name('重新生成树(性能调试)');
 const lightsToggle = gui.add(params, 'lightsOn').name('彩灯开关').onChange(v => {
-  lightGroup.visible = v;
+  if (lightsMesh) lightsMesh.visible = v;
 });
 const lightCountCtrl = gui.add(params, 'lightCount', 10, 300, 1).name('彩灯数量');
 const regenBtn = gui.add(params, 'regenLights').name('重新生成彩灯');
@@ -276,3 +329,98 @@ const regenSnowBtn = gui.add(params, 'regenSnow').name('重新生成飘雪');
 
 // 简单说明日志
 console.log('粒子圣诞树已加载 — 使用 Three.js 渲染');
+
+// ----------------
+// 截屏 / 录制 / 音乐
+// ----------------
+const screenshotBtn = document.getElementById('screenshot');
+const recordBtn = document.getElementById('record');
+const stopRecordBtn = document.getElementById('stopRecord');
+const musicToggleBtn = document.getElementById('musicToggle');
+
+screenshotBtn.addEventListener('click', () => {
+  renderer.domElement.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'particle-tree.png';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+});
+
+// 录制（使用 MediaRecorder 录制 canvas stream -> webm）
+let mediaRecorder = null;
+let recordedChunks = [];
+recordBtn.addEventListener('click', async () => {
+  if (!mediaRecorder) {
+    const stream = renderer.domElement.captureStream(30);
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+    recordedChunks = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'particle-tree.webm';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+  }
+  mediaRecorder.start();
+  recordBtn.style.display = 'none';
+  stopRecordBtn.style.display = '';
+});
+stopRecordBtn.addEventListener('click', () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+  mediaRecorder = null;
+  recordBtn.style.display = '';
+  stopRecordBtn.style.display = 'none';
+});
+
+// 背景音乐：用 WebAudio 生成简单循环节日旋律
+let audioCtx = null;
+let masterGain = null;
+let musicOn = false;
+let toneTimer = null;
+const melody = [440, 523.25, 659.25, 523.25]; // A4, C5, E5, C5
+function startMusic() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.08;
+    masterGain.connect(audioCtx.destination);
+  }
+  let i = 0;
+  musicOn = true;
+  toneTimer = setInterval(() => {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = melody[i % melody.length];
+    const g = audioCtx.createGain();
+    g.gain.value = 0.0;
+    osc.connect(g);
+    g.connect(masterGain);
+    osc.start();
+    g.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+    osc.stop(audioCtx.currentTime + 0.65);
+    i++;
+  }, 400);
+  musicToggleBtn.textContent = '音乐: 关';
+}
+function stopMusic() {
+  musicOn = false;
+  if (toneTimer) clearInterval(toneTimer);
+  toneTimer = null;
+  if (audioCtx) {
+    // fade out
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+  }
+  musicToggleBtn.textContent = '音乐: 开';
+}
+
+musicToggleBtn.addEventListener('click', () => {
+  if (!musicOn) startMusic(); else stopMusic();
+});
